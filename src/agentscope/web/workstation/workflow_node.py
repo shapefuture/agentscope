@@ -1,5 +1,37 @@
 # -*- coding: utf-8 -*-
-"""Workflow node opt."""
+"""
+AgentScope Workflow Node Module.
+
+This module defines the various node types that can be used in AgentScope workflows.
+Each node type represents a specific component or operation in a workflow, such as
+a model, agent, message, pipeline, or service.
+
+The module provides:
+1. A base WorkflowNode class that defines the common interface for all node types
+2. Specific node implementations for different workflow components
+3. Utilities for compiling nodes to Python code
+
+Workflow nodes are the building blocks of workflow DAGs. Each node encapsulates
+a specific piece of functionality and can be connected to other nodes to form
+a complete workflow. Nodes can represent models, agents, messages, pipelines,
+and services, allowing for the construction of complex workflows with diverse
+components.
+
+Typical usage:
+    # Create a workflow node
+    node = DialogAgentNode(
+        node_id="1",
+        opt_kwargs={"name": "assistant", "model_config_name": "gpt-4"},
+        source_kwargs={},
+        dep_opts=[],
+    )
+
+    # Execute the node
+    result = node(input_data)
+
+    # Compile the node to Python code
+    code = node.compile()
+"""
 from abc import ABC, abstractmethod
 from enum import IntEnum
 from functools import partial
@@ -40,7 +72,21 @@ DEFAULT_FLOW_VAR = "flow"
 
 
 class WorkflowNodeType(IntEnum):
-    """Enum for workflow node."""
+    """
+    Enumeration of workflow node types.
+
+    This enum defines the different types of nodes that can be used in a workflow.
+    Each type represents a specific category of workflow component with distinct
+    behavior and purpose.
+
+    Attributes:
+        MODEL (0): Represents a model node, which loads and manages a machine learning model.
+        AGENT (1): Represents an agent node, which encapsulates an AI agent with specific capabilities.
+        PIPELINE (2): Represents a pipeline node, which combines multiple nodes into a sequence or pattern.
+        SERVICE (3): Represents a service node, which provides access to external services or APIs.
+        MESSAGE (4): Represents a message node, which handles communication between nodes.
+        COPY (5): Represents a copy node, which duplicates or transfers data between nodes.
+    """
 
     MODEL = 0
     AGENT = 1
@@ -55,8 +101,26 @@ class WorkflowNode(ABC):
     Abstract base class representing a generic node in a workflow.
 
     WorkflowNode is designed to be subclassed with specific logic implemented
-    in the subclass methods. It provides an interface for initialization and
-    execution of operations when the node is called.
+    in the subclass methods. It provides a common interface for initialization,
+    execution, and compilation of workflow nodes.
+
+    Each workflow node has a unique ID, a set of operational parameters (opt_kwargs),
+    the original source parameters (source_kwargs), and a list of dependent nodes
+    (dep_opts). The node also has a variable name that is used when compiling the
+    node to Python code.
+
+    Subclasses must implement the __call__ method to define the node's behavior
+    when executed, and the compile method to define how the node is compiled to
+    Python code.
+
+    Attributes:
+        node_type (WorkflowNodeType): The type of the node, defined by the WorkflowNodeType enum.
+        node_id (str): A unique identifier for the node within the workflow.
+        opt_kwargs (dict): A dictionary of operational parameters for the node.
+        source_kwargs (dict): A dictionary of the original source parameters for the node.
+        dep_opts (list): A list of dependent nodes that this node depends on.
+        dep_vars (list): A list of variable names for the dependent nodes.
+        var_name (str): A variable name for the node, used when compiling to Python code.
     """
 
     node_type = None
@@ -69,8 +133,26 @@ class WorkflowNode(ABC):
         dep_opts: list,
     ) -> None:
         """
-        Initialize nodes. Implement specific initialization logic in
-        subclasses.
+        Initialize a workflow node with the specified parameters.
+
+        This method initializes the base attributes of a workflow node. Subclasses
+        should call this method using super().__init__() and then implement their
+        specific initialization logic.
+
+        The method sets up the node's ID, operational parameters, source parameters,
+        dependent nodes, and variable name. The variable name is constructed from the
+        node type and ID, and is used when compiling the node to Python code.
+
+        Args:
+            node_id (str): A unique identifier for the node within the workflow.
+            opt_kwargs (dict): A dictionary of operational parameters for the node.
+                              These are the parameters that will be used when executing
+                              the node's operation.
+            source_kwargs (dict): A dictionary of the original source parameters for the node.
+                                 These are preserved for reference and may be used during
+                                 compilation.
+            dep_opts (list): A list of dependent nodes that this node depends on.
+                            These nodes will be executed before this node in the workflow.
         """
         self.node_id = node_id
         self.opt_kwargs = opt_kwargs
@@ -81,14 +163,44 @@ class WorkflowNode(ABC):
 
     def __call__(self, x: dict = None):  # type: ignore[no-untyped-def]
         """
-        Performs the operations of the node. Implement specific logic in
-        subclasses.
+        Execute the node's operation with the provided input.
+
+        This method is called when the node is executed as part of a workflow.
+        Subclasses must implement this method to define the node's specific behavior.
+
+        The method should take an input (typically from a predecessor node), perform
+        some operation on it, and return an output that can be passed to successor nodes.
+
+        Args:
+            x (dict, optional): The input to the node's operation. This is typically
+                              the output from a predecessor node. Defaults to None.
+
+        Returns:
+            The output of the node's operation, which can be passed as input to
+            successor nodes. The specific return type depends on the node implementation.
         """
 
     @abstractmethod
     def compile(self) -> dict:
         """
-        Compile Node to python executable code dict
+        Compile the node to Python executable code.
+
+        This method generates Python code that can be used to recreate and execute
+        the node's operation. The code is returned as a dictionary with three components:
+        imports, initializations, and executions.
+
+        Subclasses must implement this method to define how the node is compiled to
+        Python code. The implementation should return a dictionary with the following keys:
+        - 'imports': A string containing import statements needed for the node.
+        - 'inits': A string containing initialization code for the node.
+        - 'execs': A string containing execution code for the node.
+
+        Returns:
+            dict: A dictionary containing the compiled Python code components.
+                 The dictionary has the following keys:
+                 - 'imports': Import statements as a string.
+                 - 'inits': Initialization code as a string.
+                 - 'execs': Execution code as a string.
         """
         return {
             "imports": "",

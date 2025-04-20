@@ -1,10 +1,27 @@
 # -*- coding: utf-8 -*-
 """
-AgentScope workstation DAG running engine.
+AgentScope Workstation DAG (Directed Acyclic Graph) Running Engine.
 
-This module defines various workflow nodes that can be used to construct
-a computational DAG. Each node represents a step in the DAG and
-can perform certain actions when called.
+This module provides the core functionality for building, running, and compiling
+workflow DAGs in AgentScope. It defines the ASDiGraph class, which extends NetworkX's
+DiGraph to support AgentScope-specific workflow operations.
+
+The module handles:
+1. Building DAGs from workflow configurations
+2. Executing workflow DAGs by running nodes in topological order
+3. Compiling workflow DAGs to standalone Python scripts
+4. Managing dependencies between workflow nodes
+
+The workflow DAG represents the structure of a workflow, with nodes for modules
+and edges for connections between modules. Each node in the DAG corresponds to
+a specific operation or component in the workflow, such as a model, agent, or service.
+
+Typical usage:
+    config = load_workflow("workflow.json")
+    dag = build_dag(config)
+    dag.run()  # Execute the workflow
+    # or
+    dag.compile("output.py")  # Compile to a Python script
 """
 import copy
 from typing import Any
@@ -28,7 +45,24 @@ except ImportError:
 
 
 def remove_duplicates_from_end(lst: list) -> list:
-    """remove duplicates element from end on a list"""
+    """
+    Remove duplicate elements from a list while preserving the order of first occurrence.
+
+    This function processes the list in reverse order, keeping track of seen elements
+    to remove duplicates. The result is a list with only the first occurrence of each
+    element preserved, which is useful for removing duplicate import statements while
+    maintaining their original order.
+
+    Args:
+        lst (list): The input list that may contain duplicate elements.
+
+    Returns:
+        list: A new list with duplicates removed, preserving the order of first occurrence.
+
+    Example:
+        >>> remove_duplicates_from_end(['import a', 'import b', 'import a'])
+        ['import a', 'import b']
+    """
     seen = set()
     result = []
     for item in reversed(lst):
@@ -41,20 +75,38 @@ def remove_duplicates_from_end(lst: list) -> list:
 
 class ASDiGraph(nx.DiGraph):
     """
-    A class that represents a directed graph, extending the functionality of
-    networkx's DiGraph to suit specific workflow requirements in AgentScope.
+    A directed acyclic graph (DAG) class for AgentScope workflows.
 
-    This graph supports operations such as adding nodes with associated
-    computations and executing these computations in a topological order.
+    This class extends NetworkX's DiGraph to provide specialized functionality for
+    AgentScope workflows. It supports building, running, and compiling workflow DAGs,
+    with nodes representing workflow components (models, agents, services, etc.) and
+    edges representing connections between components.
+
+    The class manages the execution of workflow nodes in topological order, ensuring
+    that dependencies are satisfied before a node is executed. It also provides
+    functionality for compiling workflows to standalone Python scripts.
 
     Attributes:
-        nodes_not_in_graph (set): A set of nodes that are not included in
-        the computation graph.
+        nodes_not_in_graph (set): A set of node IDs that are excluded from the computation
+                                 graph, typically nodes that are part of a group or
+                                 are otherwise handled separately.
+        imports (list): A list of import statements needed for the compiled Python script.
+        inits (list): A list of initialization statements for the compiled Python script.
+        execs (list): A list of execution statements for the compiled Python script.
     """
 
     def __init__(self, *args, **kwargs):  # type: ignore[no-untyped-def]
         """
         Initialize the ASDiGraph instance.
+
+        This constructor initializes the ASDiGraph by calling the parent class constructor
+        and setting up the necessary attributes for workflow management. It prepares lists
+        for imports, initializations, and execution statements that will be used when
+        compiling the workflow to a Python script.
+
+        Args:
+            *args: Variable length argument list passed to the parent class constructor.
+            **kwargs: Arbitrary keyword arguments passed to the parent class constructor.
         """
         super().__init__(*args, **kwargs)
         self.nodes_not_in_graph = set()
@@ -74,11 +126,24 @@ class ASDiGraph(nx.DiGraph):
 
     def run(self) -> None:
         """
-        Execute the computations associated with each node in the graph.
+        Execute the workflow by running each node in topological order.
 
-        The method initializes AgentScope, performs a topological sort of
-        the nodes, and then runs each node's computation sequentially using
-        the outputs from its predecessors as inputs.
+        This method executes the workflow represented by the DAG. It first initializes
+        AgentScope, then performs a topological sort of the nodes to determine the
+        execution order. Each node is executed in sequence, with the outputs from its
+        predecessors passed as inputs.
+
+        The method handles the flow of data between nodes, ensuring that each node
+        receives the appropriate inputs from its predecessors. Currently, the method
+        only supports passing the output of the first predecessor as input to a node.
+
+        Returns:
+            None: This method does not return a value, but executes the workflow.
+
+        Raises:
+            ValueError: If a node has too many predecessors or if there are other issues
+                      with the workflow execution.
+            Exception: Any exceptions that might occur during workflow execution.
         """
         agentscope.init(logger_level="DEBUG")
         sorted_nodes = list(nx.topological_sort(self))
@@ -112,7 +177,32 @@ class ASDiGraph(nx.DiGraph):
         compiled_filename: str = "",
         **kwargs,
     ) -> str:
-        """Compile DAG to a runnable python code"""
+        """
+        Compile the workflow DAG to a standalone Python script.
+
+        This method generates a Python script that can execute the workflow represented
+        by the DAG. The script includes all necessary imports, initialization code, and
+        the workflow execution logic. The generated code can be saved to a file and run
+        independently of AgentScope.
+
+        The method performs a topological sort of the nodes to determine the execution
+        order, then generates code for each node in sequence. It also attempts to format
+        the generated code using the 'black' code formatter if available.
+
+        Args:
+            compiled_filename (str, optional): The name of the output Python file.
+                                             If empty, the code is returned but not saved.
+                                             Defaults to "".
+            **kwargs: Additional keyword arguments to pass to AgentScope initialization
+                     in the generated code.
+
+        Returns:
+            str: The generated Python code as a string.
+
+        Raises:
+            IOError: If the output file cannot be written.
+            Exception: Any exceptions that might occur during compilation.
+        """
 
         def format_python_code(code: str) -> str:
             try:
@@ -170,17 +260,35 @@ class ASDiGraph(nx.DiGraph):
         config: dict,
     ) -> Any:
         """
-        Add a node to the graph based on provided node information and
-        configuration.
+        Add a node to the graph based on provided node information and configuration.
+
+        This method creates and adds a node to the DAG based on the provided information.
+        It handles the creation of the appropriate node type (model, agent, message, etc.),
+        initializes the node with the specified parameters, and adds it to the graph.
+
+        The method also handles dependencies between nodes, ensuring that dependent nodes
+        are added to the graph before the current node. It recursively adds any dependent
+        nodes that are not already in the graph.
+
+        For nodes that are part of a group (e.g., nodes within a pipeline), the method
+        excludes them from the main DAG execution by adding them to the nodes_not_in_graph set.
 
         Args:
-            node_id (str): The identifier for the node being added.
-            node_info (dict): A dictionary containing information about the
-                node.
-            config (dict): Configuration information for the node dependencies.
+            node_id (str): The identifier for the node being added. This should be a unique
+                          string that identifies the node within the workflow.
+            node_info (dict): A dictionary containing information about the node, including
+                            its type, parameters, and other metadata.
+            config (dict): Configuration information for the entire workflow, used to resolve
+                         dependencies between nodes.
 
         Returns:
-            The computation object associated with the added node.
+            Any: The computation object associated with the added node, which can be called
+                to execute the node's computation.
+
+        Raises:
+            NotImplementedError: If the node type is not supported.
+            ValueError: If there are issues with the node configuration or dependencies.
+            Exception: Any other exceptions that might occur during node creation.
         """
         node_cls = NODE_NAME_MAPPING[node_info.get("name", "")]
         if node_cls.node_type not in [
@@ -240,13 +348,28 @@ class ASDiGraph(nx.DiGraph):
         """
         Execute the computation associated with a given node in the graph.
 
+        This method executes the computation for a specific node in the workflow DAG.
+        It retrieves the node's computation object from the graph and calls it with
+        the provided input. The method logs the input and output values for debugging
+        purposes.
+
+        The node's computation is expected to be a callable object that takes an input
+        and returns an output. The specific behavior depends on the type of node being
+        executed (model, agent, message, etc.).
+
         Args:
-            node_id (str): The identifier of the node whose computation is
-                to be executed.
-            x_in: The input to the node's computation. Defaults to None.
+            node_id (str): The identifier of the node whose computation is to be executed.
+                          This should be a valid node ID in the graph.
+            x_in (Any, optional): The input to the node's computation. This is typically
+                                the output from a predecessor node. Defaults to None.
 
         Returns:
-            The output of the node's computation.
+            Any: The output of the node's computation, which can be passed as input to
+                successor nodes.
+
+        Raises:
+            KeyError: If the specified node_id is not found in the graph.
+            Exception: Any exceptions that might occur during the node's computation.
         """
         logger.debug(
             f"\nnode_id: {node_id}\nin_values:{x_in}",
@@ -261,19 +384,30 @@ class ASDiGraph(nx.DiGraph):
 
 def sanitize_node_data(raw_info: dict) -> dict:
     """
-    Clean and validate node data, evaluating callable expressions where
-    necessary.
+    Clean and validate node data, evaluating callable expressions where necessary.
 
-    Processes the raw node information, removes empty arguments, and evaluates
-    any callable expressions provided as string literals.
+    This function processes raw node information from a workflow configuration,
+    performing several transformations to prepare it for use in building a workflow DAG:
+
+    1. It creates a deep copy of the original data to avoid modifying the input
+    2. It preserves the original arguments in a 'source' field for reference
+    3. It removes empty arguments that might cause issues during execution
+    4. It evaluates any callable expressions provided as string literals
+
+    Callable expressions are strings that represent Python functions or objects that
+    can be called. These are evaluated using eval() to convert them from strings to
+    actual callable objects.
 
     Args:
-        raw_info (dict): The raw node information dictionary that may contain
-            callable expressions as strings.
+        raw_info (dict): The raw node information dictionary from the workflow configuration.
+                        This may contain callable expressions as strings and empty arguments.
 
     Returns:
-        dict: The sanitized node information with callable expressions
-            evaluated.
+        dict: The sanitized node information with empty arguments removed and callable
+             expressions evaluated. The original arguments are preserved in the 'source' field.
+
+    Raises:
+        Exception: Any exceptions that might occur during evaluation of callable expressions.
     """
 
     copied_info = copy.deepcopy(raw_info)
@@ -294,20 +428,37 @@ def sanitize_node_data(raw_info: dict) -> dict:
 
 def build_dag(config: dict) -> ASDiGraph:
     """
-    Construct a Directed Acyclic Graph (DAG) from the provided configuration.
+    Construct a Directed Acyclic Graph (DAG) from a workflow configuration.
 
-    Initializes the graph nodes based on the configuration, adds model nodes
-    first, then non-model nodes, and finally adds edges between the nodes.
+    This function is the main entry point for building a workflow DAG from a configuration
+    dictionary. It processes the configuration, creates nodes for each component, and
+    establishes connections between them according to the workflow structure.
+
+    The function follows these steps:
+    1. Handle special cases for configurations from different sources (e.g., HTML JSON files)
+    2. Sanitize node data to prepare it for use in the DAG
+    3. Add model nodes first, as they may be dependencies for other nodes
+    4. Add non-model nodes (agents, messages, pipelines, etc.)
+    5. Add edges between nodes based on the connections in the configuration
+    6. Verify that the resulting graph is acyclic
 
     Args:
-        config (dict): The configuration to build the graph from, containing
-            node info such as name, type, arguments, and connections.
+        config (dict): The workflow configuration to build the graph from. This should
+                      contain information about nodes (modules) and their connections.
+                      The format should match the AgentScope workflow configuration format,
+                      which can be loaded from JSON or XML files.
 
     Returns:
-        ASDiGraph: The constructed directed acyclic graph.
+        ASDiGraph: The constructed directed acyclic graph representing the workflow.
+                  This graph can be executed using its run() method or compiled to a
+                  Python script using its compile() method.
 
     Raises:
-        ValueError: If the resulting graph is not acyclic.
+        ValueError: If the resulting graph is not acyclic, indicating that there are
+                  circular dependencies in the workflow.
+        KeyError: If required keys are missing from the configuration.
+        NotImplementedError: If unsupported node types are encountered.
+        Exception: Any other exceptions that might occur during DAG construction.
     """
     dag = ASDiGraph()
 
