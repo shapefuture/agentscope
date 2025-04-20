@@ -6,20 +6,29 @@ import os
 
 from loguru import logger
 from agentscope.web.workstation.workflow_dag import build_dag
+from agentscope.web.workstation.workflow_importer import load_workflow, convert_to_agentscope_workflow
 
 
 def load_config(config_path: str) -> dict:
-    """Load a JSON configuration file.
+    """Load a workflow configuration file (JSON or XML).
 
     Args:
-        config_path: A string path to the JSON configuration file.
+        config_path: A string path to the configuration file (JSON or XML).
 
     Returns:
         A dictionary containing the loaded configuration.
     """
-    with open(config_path, "r", encoding="utf-8") as config_file:
-        config = json.load(config_file)
-    return config
+    try:
+        # Use the workflow importer to load the file based on its extension
+        config = load_workflow(config_path)
+
+        # Convert the configuration to AgentScope format if needed
+        config = convert_to_agentscope_workflow(config)
+
+        return config
+    except Exception as e:
+        logger.error(f"Failed to load configuration file: {e}")
+        raise
 
 
 def start_workflow(config: dict) -> None:
@@ -67,13 +76,13 @@ def main() -> None:
     parser.add_argument(
         "cfg",
         type=str,
-        help="Path to the config file.",
+        help="Path to the config file (JSON or XML).",
         nargs="?",
     )
     parser.add_argument(
         "--compile",
         type=str,
-        help="Compile the json code to python file, e.g. main.py",
+        help="Compile the workflow to a Python file, e.g. main.py",
         default=False,
         nargs="?",
         const="",

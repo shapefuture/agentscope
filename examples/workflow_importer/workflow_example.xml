@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<workflow>
+  <metadata>
+    <version>2</version>
+  </metadata>
+  <modules>
+    <module id="1" type="telegram.watchMessage" version="1">
+      <parameters>
+        <token>YOUR_TELEGRAM_BOT_TOKEN</token>
+      </parameters>
+      <position x="0" y="0"/>
+    </module>
+    <module id="2" type="tools.textParser" version="1">
+      <parameters>
+        <text>{{1.text}}</text>
+        <parser>split</parser>
+        <delimiter>|</delimiter>
+      </parameters>
+      <position x="200" y="0"/>
+    </module>
+    <module id="3" type="http.makeRequest" version="1">
+      <parameters>
+        <url>https://openrouter.ai/api/v1/chat/completions</url>
+        <method>POST</method>
+        <headers>
+          <header name="Authorization" value="Bearer YOUR_OPENROUTER_API_KEY"/>
+          <header name="Content-Type" value="application/json"/>
+          <header name="HTTP-Referer" value="https://yourdomain.com"/>
+        </headers>
+        <body>{"model": "deepseek/deepseek-chat-v3-0324:free","messages":[{"role":"system","content":"Act as a product strategist. Generate expert profiling."},{"role":"user","content":"Name: {{2.parts[0]}}\nIdea: {{2.parts[2]}}\nBackground: {{2.parts[3]}}"}]}</body>
+        <bodyType>raw</bodyType>
+        <responseType>json</responseType>
+      </parameters>
+      <position x="400" y="0"/>
+    </module>
+    <module id="4" type="http.makeRequest" version="1">
+      <parameters>
+        <url>https://openrouter.ai/api/v1/chat/completions</url>
+        <method>POST</method>
+        <headers>
+          <header name="Authorization" value="Bearer YOUR_OPENROUTER_API_KEY"/>
+          <header name="Content-Type" value="application/json"/>
+          <header name="HTTP-Referer" value="https://yourdomain.com"/>
+        </headers>
+        <body>{"model": "deepseek/deepseek-chat-v3-0324:free","messages":[{"role":"system","content":"Segment ЦА using Hunter's Ladder."},{"role":"user","content":"{{3.data.choices[0].message.content}}"}]}</body>
+        <bodyType>raw</bodyType>
+        <responseType>json</responseType>
+      </parameters>
+      <position x="600" y="0"/>
+    </module>
+  </modules>
+  <connections>
+    <connection from="1" to="2"/>
+    <connection from="2" to="3"/>
+    <connection from="3" to="4"/>
+  </connections>
+</workflow>

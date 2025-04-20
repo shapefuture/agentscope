@@ -1,0 +1,88 @@
+{
+  "metadata": {
+    "version": 2
+  },
+  "modules": [
+    {
+      "id": 1,
+      "module": "telegram.watchMessage",
+      "version": 1,
+      "parameters": {
+        "token": "YOUR_TELEGRAM_BOT_TOKEN"
+      },
+      "metadata": {
+        "designer": {
+          "x": 0,
+          "y": 0
+        }
+      }
+    },
+    {
+      "id": 2,
+      "module": "tools.textParser",
+      "version": 1,
+      "parameters": {
+        "text": "{{1.text}}",
+        "parser": "split",
+        "delimiter": "|"
+      },
+      "metadata": {
+        "designer": {
+          "x": 200,
+          "y": 0
+        }
+      }
+    },
+    {
+      "id": 3,
+      "module": "http.makeRequest",
+      "version": 1,
+      "parameters": {
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "method": "POST",
+        "headers": [
+          { "name": "Authorization", "value": "Bearer YOUR_OPENROUTER_API_KEY" },
+          { "name": "Content-Type", "value": "application/json" },
+          { "name": "HTTP-Referer", "value": "https://yourdomain.com" }
+        ],
+        "body": "{\"model\": \"deepseek/deepseek-chat-v3-0324:free\",\"messages\":[{\"role\":\"system\",\"content\":\"Act as a product strategist. Generate expert profiling.\"},{\"role\":\"user\",\"content\":\"Name: {{2.parts[0]}}\\nIdea: {{2.parts[2]}}\\nBackground: {{2.parts[3]}}\"}]}",
+        "bodyType": "raw",
+        "responseType": "json"
+      },
+      "metadata": {
+        "designer": {
+          "x": 400,
+          "y": 0
+        }
+      }
+    },
+    {
+      "id": 4,
+      "module": "http.makeRequest",
+      "version": 1,
+      "parameters": {
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "method": "POST",
+        "headers": [
+          { "name": "Authorization", "value": "Bearer YOUR_OPENROUTER_API_KEY" },
+          { "name": "Content-Type", "value": "application/json" },
+          { "name": "HTTP-Referer", "value": "https://yourdomain.com" }
+        ],
+        "body": "{\"model\": \"deepseek/deepseek-chat-v3-0324:free\",\"messages\":[{\"role\":\"system\",\"content\":\"Segment ЦА using Hunter's Ladder.\"},{\"role\":\"user\",\"content\":\"{{3.data.choices[0].message.content}}\"}]}",
+        "bodyType": "raw",
+        "responseType": "json"
+      },
+      "metadata": {
+        "designer": {
+          "x": 600,
+          "y": 0
+        }
+      }
+    }
+  ],
+  "connections": {
+    "1": { "2": [0] },
+    "2": { "3": [0] },
+    "3": { "4": [0] }
+  }
+}
